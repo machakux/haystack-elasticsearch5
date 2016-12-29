@@ -55,6 +55,13 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
                 if field_class.indexed is False or hasattr(field_class, 'facet_for'):
                     field_mapping['index'] = 'not_analyzed'
                     del field_mapping['analyzer']
+                if field_class.faceted or hasattr(field_class, 'facet_for'):
+                    # use multi-fields
+                    if not field_mapping.get('fields'):
+                        field_mapping['fields'] = {}
+                    field_mapping['fields']['raw'] = {
+                        'type': 'keyword'
+                    }
 
             mapping[field_class.index_fieldname] = field_mapping
 
@@ -167,7 +174,7 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
             for facet_fieldname, extra_options in facets.items():
                 facet_options = {
                     'terms': {
-                        'field': facet_fieldname,
+                        'field': facet_fieldname + '.raw',
                         'size': 100,
                     },
                 }
