@@ -33,6 +33,8 @@ FIELD_MAPPINGS = {
     'long':       {'type': 'long'},
     'integer':    {'type': 'long'},
 }
+
+
 class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
 
     def build_schema(self, fields):
@@ -44,15 +46,13 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
 
         for field_name, field_class in fields.items():
             field_mapping = FIELD_MAPPINGS.get(field_class.field_type, DEFAULT_FIELD_MAPPING).copy()
-            if field_class.boost != 1.0:
-                field_mapping['boost'] = field_class.boost
 
             if field_class.document is True:
                 content_field_name = field_class.index_fieldname
 
-            # Do this last to override `text` fields.
             if field_mapping['type'] == 'text':
                 if field_class.indexed is False or hasattr(field_class, 'facet_for'):
+                    # do not analyze
                     field_mapping['index'] = 'not_analyzed'
                     del field_mapping['analyzer']
                 if field_class.faceted or hasattr(field_class, 'facet_for'):
