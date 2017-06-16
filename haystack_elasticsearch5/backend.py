@@ -10,7 +10,7 @@ import haystack
 from haystack.backends.elasticsearch_backend import ElasticsearchSearchBackend, ElasticsearchSearchQuery
 from haystack.backends import BaseEngine, log_query
 from haystack.models import SearchResult
-from haystack.constants import DEFAULT_OPERATOR, DJANGO_CT, DJANGO_ID, FUZZY_MAX_EXPANSIONS
+from haystack.constants import DEFAULT_OPERATOR, DJANGO_CT, DJANGO_ID, FUZZY_MAX_EXPANSIONS, DEFAULT_ALIAS
 from haystack.utils import get_model_ct
 from haystack.utils.app_loading import haystack_get_model
 
@@ -70,6 +70,7 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
     def build_search_kwargs(self, query_string, sort_by=None, start_offset=0, end_offset=None,
                             fields='', highlight=False, facets=None,
                             date_facets=None, query_facets=None,
+                            boost_fields=None,
                             narrow_queries=None, spelling_query=None,
                             within=None, dwithin=None, distance_point=None,
                             models=None, limit_to_registered_models=None,
@@ -88,7 +89,7 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
             kwargs = {
                 'query': {
                     'query_string': {
-                        'default_field': content_field,
+                        'fields': [content_field],
                         'default_operator': DEFAULT_OPERATOR,
                         'query': query_string,
                         'analyze_wildcard': True,
@@ -99,6 +100,10 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
                     },
                 },
             }
+            if boost_fields:
+                kwargs['query']['query_string']['fields'] = []
+                for boost_field, boost_value in boost_fields.items():
+                    kwargs['query']['query_string']['fields'].append('%s^%s' %(boost_field, boost_value))
 
         # so far, no filters
         filters = []
@@ -463,7 +468,26 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
 
 
 class Elasticsearch5SearchQuery(ElasticsearchSearchQuery):
-    pass
+
+    def __init__(self, using=DEFAULT_ALIAS):
+        self.boost_fields = {}
+        super(Elasticsearch5SearchQuery, self).__init__(using=using)
+
+    def add_boost_fields(self, fields):
+        """Add boosted fields to the query."""
+        self.boost_fields = fields
+
+    def build_params(self, spelling_query=None, **kwargs):
+        search_kwargs = super(Elasticsearch5SearchQuery, self).build_params(spelling_query, **kwargs)
+        if self.boost_fields:
+            search_kwargs['boost_fields'] = self.boost_fields
+        return search_kwargs
+
+    def _clone(self, klass=None, using=None):
+        clone = super(Elasticsearch5SearchQuery, self)._clone(klass, using)
+        clone.boost_fields = self.boost_fields.copy()
+        return clone
+
 
 class Elasticsearch5SearchEngine(BaseEngine):
     backend = Elasticsearch5SearchBackend
