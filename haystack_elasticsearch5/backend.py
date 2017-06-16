@@ -28,6 +28,7 @@ FIELD_MAPPINGS = {
     'datetime':   {'type': 'date'},
 
     'dict':       {'type': 'object'},
+    'nested':     {'type': 'nested'},
     'location':   {'type': 'geo_point'},
     'boolean':    {'type': 'boolean'},
     'float':      {'type': 'float'},
