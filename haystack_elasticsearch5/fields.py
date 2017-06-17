@@ -1,4 +1,4 @@
-from haystack.fields import SearchField
+from haystack.fields import SearchField, CharField
 
 
 class DictField(SearchField):
@@ -33,3 +33,11 @@ class NestedField(SearchField):
                     obj[k] = v.isoformat()
             values.append(obj)
         return values
+
+
+class NgramField(CharField):
+    field_type = 'ngram'
+
+
+class EdgeNgramField(NgramField):
+    field_type = 'edge_ngram'
