@@ -57,13 +57,16 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
                     # do not analyze
                     field_mapping['index'] = 'not_analyzed'
                     del field_mapping['analyzer']
-                if field_class.faceted or hasattr(field_class, 'facet_for'):
-                    # use multi-fields
-                    if not field_mapping.get('fields'):
-                        field_mapping['fields'] = {}
+
+            if field_class.faceted:
+                # use multi-fields
+                if not field_mapping.get('fields'):
+                    field_mapping['fields'] = {}
+                if field_mapping['type'] == 'text':
+                    field_mapping['fields']['raw'] = {'type': 'keyword'}
+                else:
                     field_mapping['fields']['raw'] = {
-                        'type': 'keyword'
-                    }
+                        'type': field_mapping['type']}
 
             mapping[field_class.index_fieldname] = field_mapping
 
