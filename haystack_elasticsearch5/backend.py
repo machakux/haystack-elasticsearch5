@@ -410,12 +410,12 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
                     facet_type = 'terms'
 
                 if facet_type == 'terms':
-                    facets['fields'][facet_fieldname] = [(bucket['key'], bucket['doc_count']) for bucket in facet_info['buckets']]
+                    facets['fields'][facet_fieldname] = [(bucket['key'], bucket['doc_count']) for bucket in facet_info.get('buckets', [])]
 
                 elif facet_type == 'haystack_date_histogram':
                     # Elasticsearch provides UTC timestamps with an extra three
                     # decimals of precision, which datetime barfs on.
-                    dates = [(from_timestamp(bucket['key'] / 1000), bucket['doc_count']) for bucket in facet_info['buckets']]
+                    dates = [(from_timestamp(bucket['key'] / 1000), bucket['doc_count']) for bucket in acet_info.get('buckets', [])]
                     facets['dates'][facet_fieldname[:-len(DATE_HISTOGRAM_FIELD_NAME_SUFFIX)]] = dates
 
                 elif facet_type == 'haystack_date_range':
