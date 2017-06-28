@@ -66,7 +66,11 @@ class Elasticsears5DeclarativeMetaclass(DeclarativeMetaclass):
 DeclarativeMetaclass = Elasticsears5DeclarativeMetaclass
 
 
-class Elasticsearch5SearchIndex(SearchIndex, with_metaclass(DeclarativeMetaclass, threading.local)):
+class _Elasticsearch5Index(with_metaclass(DeclarativeMetaclass, threading.local)):
+    pass
+
+
+class Elasticsearch5SearchIndex(SearchIndex, _Elasticsearch5Index):
     pass
 
 SearchIndex = Elasticsearch5SearchIndex
