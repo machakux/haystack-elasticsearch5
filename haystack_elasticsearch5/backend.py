@@ -545,13 +545,23 @@ class Elasticsearch5SearchQuery(ElasticsearchSearchQuery):
         self.filter_context = []
         super(Elasticsearch5SearchQuery, self).__init__(using=using)
 
-    def add_filter_context(self, *args, **kwargs):
-        """Add field filter context to the query."""
-        self.filter_context.append(kwargs)
+    def build_query(self):
+        """Adds parameters to the filter context.
+        """
+        final_query = self.matching_all_fragment()
 
-    def add_boost_fields(self, fields):
-        """Add boosted fields to the query."""
-        self.boost_fields = fields
+        if self.boost:
+            boost_list = []
+
+            for boost_word, boost_value in self.boost.items():
+                boost_list.append(self.boost_fragment(boost_word, boost_value))
+
+            final_query = "%s %s" % (final_query, " ".join(boost_list))
+
+        for f in self.query_filter.children:
+            self.filter_context.append({f[0]: f[1]})
+
+        return final_query
 
     def build_params(self, spelling_query=None, **kwargs):
         search_kwargs = super(Elasticsearch5SearchQuery, self).build_params(spelling_query, **kwargs)
@@ -560,6 +570,10 @@ class Elasticsearch5SearchQuery(ElasticsearchSearchQuery):
         if self.filter_context:
             search_kwargs['filter_context'] = self.filter_context
         return search_kwargs
+
+    def add_boost_fields(self, fields):
+        """Add boosted fields to the query."""
+        self.boost_fields = fields
 
     def _clone(self, klass=None, using=None):
         clone = super(Elasticsearch5SearchQuery, self)._clone(klass, using)

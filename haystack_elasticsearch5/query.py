@@ -8,10 +8,3 @@ class SearchQuerySet(BaseSearchQuerySet):
         clone = self._clone()
         clone.query.add_boost_fields(fields)
         return clone
-
-    def filter(self, *args, **kwargs):
-        clone = self._clone()
-        if args:
-            return super(SearchQuerySet, self).filter(*args, **kwargs)
-        clone.query.add_filter_context(**kwargs)
-        return clone
