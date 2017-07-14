@@ -5,12 +5,14 @@ from datetime import datetime, timedelta
 import elasticsearch
 
 from django.conf import settings
+from django.utils.translation import ugettext_lazy as _
 
 import haystack
 from haystack.backends.elasticsearch_backend import ElasticsearchSearchBackend, ElasticsearchSearchQuery
 from haystack.backends import BaseEngine, log_query
 from haystack.models import SearchResult
-from haystack.constants import DEFAULT_OPERATOR, DJANGO_CT, DJANGO_ID, FUZZY_MAX_EXPANSIONS, DEFAULT_ALIAS
+from haystack.constants import (DEFAULT_OPERATOR, DJANGO_CT, DJANGO_ID, FUZZY_MAX_EXPANSIONS, DEFAULT_ALIAS,
+                                FILTER_SEPARATOR, VALID_FILTERS)
 from haystack.utils import get_model_ct
 from haystack.utils.app_loading import haystack_get_model
 
@@ -56,10 +58,10 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
                 if field_class.indexed is False or hasattr(field_class, 'facet_for'):
                     # do not analyze
                     field_mapping['index'] = 'not_analyzed'
-                    del field_mapping['analyzer']
+                    field_mapping['type'] = 'keyword'
 
-            if field_class.faceted:
-                # use multi-fields
+            if field_mapping['type'] not in ['object', 'nested']:
+                # add raw field
                 if not field_mapping.get('fields'):
                     field_mapping['fields'] = {}
                 if field_mapping['type'] == 'text':
@@ -75,7 +77,7 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
     def build_search_kwargs(self, query_string, sort_by=None, start_offset=0, end_offset=None,
                             fields='', highlight=False, facets=None,
                             date_facets=None, query_facets=None,
-                            boost_fields=None,
+                            boost_fields=None, filter_context=None,
                             narrow_queries=None, spelling_query=None,
                             within=None, dwithin=None, distance_point=None,
                             models=None, limit_to_registered_models=None,
@@ -84,6 +86,63 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
         index = haystack.connections[self.connection_alias].get_unified_index()
         content_field = index.document_field
 
+        filters = []
+        filter_query_strings = {
+            'content': u'%s',
+            'contains': u'*%s*',
+            'endswith': u'*%s',
+            'startswith': u'%s*',
+            'exact': u'%s',
+            'gt': u'{%s TO *}',
+            'gte': u'[%s TO *]',
+            'lt': u'{* TO %s}',
+            'lte': u'[* TO %s]',
+            'fuzzy': u'%s~',
+        }
+
+        if filter_context:
+            for f in filter_context:
+                if f.get('content'):
+                    content = str(f.pop('content'))
+                    if query_string == '*:*':
+                       query_string = content
+                    else:
+                        query_string = '%s %s' %(query_string, content)
+                for k,v in f.items():
+                    try:
+                        _value = v.prepare()
+                    except AttributeError:
+                        _value = str(v)
+                    _field, _lookup = self.get_filter_lookup(k)
+                    if _lookup == 'exact':
+                        filters.append({'term': {_field + '.raw': _value}})
+                    elif _lookup == 'content':
+                        filters.append({'match': {_field: _value}})
+                    elif _lookup == 'in':
+                        if not isinstance(_value, list):
+                            _value = _value.split(',')
+                        filters.append({'terms': {_field: _value}})
+                    elif _lookup == 'range':
+                        if isinstance(_value, dict):
+                            filters.append({'range': {_field: _value}})
+                        elif _value:
+                            if not isinstance(_value, list):
+                                _value = _value.split(',')
+                            if len(_value) >= 2:
+                                _range = {}
+                                _range['gte'] = _value[0]
+                                _range['lte'] = _value[1]
+                                filters.append({'range': {_field: _range}})
+                            else:
+                                raise ValueError(
+                                    _('Range lookup requires minimum and maximum values,'
+                                      'only one value was provided'))
+                    else:
+                        filters.append({
+                            'query_string': {
+                                'fields': [_field],
+                                'query': filter_query_strings[_lookup] %_value,
+                            }})
         if query_string == '*:*':
             kwargs = {
                 'query': {
@@ -109,9 +168,6 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
                 kwargs['query']['query_string']['fields'] = []
                 for boost_field, boost_value in boost_fields.items():
                     kwargs['query']['query_string']['fields'].append('%s^%s' %(boost_field, boost_value))
-
-        # so far, no filters
-        filters = []
 
         if fields:
             if isinstance(fields, (list, set)):
@@ -326,7 +382,6 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
 
         if extra_kwargs:
             kwargs.update(extra_kwargs)
-
         return kwargs
 
     @log_query
@@ -471,12 +526,28 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
             'spelling_suggestion': spelling_suggestion,
         }
 
+    def get_filter_lookup(self, expression):
+        """Parses an expression and determines the field and filter type."""
+        parts = expression.split(FILTER_SEPARATOR)
+        field = parts[0]
+        if len(parts) == 1 or parts[-1] not in VALID_FILTERS:
+            filter_type = 'exact'
+        else:
+            filter_type = parts.pop()
+
+        return (field, filter_type)
+
 
 class Elasticsearch5SearchQuery(ElasticsearchSearchQuery):
 
     def __init__(self, using=DEFAULT_ALIAS):
         self.boost_fields = {}
+        self.filter_context = []
         super(Elasticsearch5SearchQuery, self).__init__(using=using)
+
+    def add_filter_context(self, *args, **kwargs):
+        """Add field filter context to the query."""
+        self.filter_context.append(kwargs)
 
     def add_boost_fields(self, fields):
         """Add boosted fields to the query."""
@@ -486,11 +557,14 @@ class Elasticsearch5SearchQuery(ElasticsearchSearchQuery):
         search_kwargs = super(Elasticsearch5SearchQuery, self).build_params(spelling_query, **kwargs)
         if self.boost_fields:
             search_kwargs['boost_fields'] = self.boost_fields
+        if self.filter_context:
+            search_kwargs['filter_context'] = self.filter_context
         return search_kwargs
 
     def _clone(self, klass=None, using=None):
         clone = super(Elasticsearch5SearchQuery, self)._clone(klass, using)
         clone.boost_fields = self.boost_fields.copy()
+        clone.filter_context = self.filter_context.copy()
         return clone
 
 
