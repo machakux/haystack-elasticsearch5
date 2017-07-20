@@ -60,7 +60,7 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
                     field_mapping['index'] = 'not_analyzed'
                     field_mapping['type'] = 'keyword'
 
-            if field_mapping['type'] not in ['object', 'nested']:
+            if field_mapping['type'] not in ['object', 'nested', 'geo_point']:
                 # add raw field
                 if not field_mapping.get('fields'):
                     field_mapping['fields'] = {}
