@@ -1,5 +1,6 @@
 import warnings
 
+import ast
 from datetime import datetime, timedelta
 
 import elasticsearch
@@ -120,8 +121,12 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
                         filters.append({'match': {_field: _value}})
                     elif _lookup == 'in':
                         if not isinstance(_value, list):
-                            _value = _value.split(',')
-                        filters.append({'terms': {_field: _value}})
+                            _value = ast.literal_eval(str(_value))
+                        filters.append({
+                            'query_string': {
+                                'fields': [_field],
+                                'query': ' OR '.join(_value),
+                            }})
                     elif _lookup == 'range':
                         if isinstance(_value, dict):
                             filters.append({'range': {_field: _value}})
