@@ -536,7 +536,7 @@ class Elasticsearch5SearchBackend(ElasticsearchSearchBackend):
         parts = expression.split(FILTER_SEPARATOR)
         field = parts[0]
         if len(parts) == 1 or parts[-1] not in VALID_FILTERS:
-            filter_type = 'exact'
+            filter_type = 'content'
         else:
             filter_type = parts.pop()
 
